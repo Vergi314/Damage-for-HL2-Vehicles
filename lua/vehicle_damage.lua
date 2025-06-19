@@ -1,5 +1,19 @@
 -- Vehicle Damage and Gibbing System with Options
+local activeVehicles = {} --all valid vehicles
 
+for _, ent in ipairs(ents.GetAll()) do
+    if IsValid(ent) and allowedVehicles[ent:GetClass()] then
+        activeVehicles[ent:EntIndex()] = ent
+        local entIndex = ent:EntIndex()
+        vehicleHealths[entIndex] = GetConVar("vdg_global_default_hp"):GetInt()
+        previousPositions[entIndex] = ent:GetPos()
+        previousVelocities[entIndex] = Vector(0, 0, 0)
+        hasExploded[entIndex] = false
+        hasSparked[entIndex] = false
+        lastZapTime[entIndex] = 0
+        activeVehicles[ent:EntIndex()] = ent -- Add to our list
+    end
+end
 local vehicleHealths = {}
 local previousPositions = {}
 local previousVelocities = {}
@@ -73,6 +87,20 @@ hook.Add("OnEntityCreated", "InitializeVehicleHealth", function(ent)
         hasExploded[entIndex] = false
         hasSparked[entIndex] = false
         lastZapTime[entIndex] = 0
+        activeVehicles[ent:EntIndex()] = ent -- Add to our list
+    end
+end)
+
+hook.Add("EntityRemoved", "CleanupVehicle", function(ent)
+    if IsValid(ent) and allowedVehicles[ent:GetClass()] then
+        local entIndex = ent:EntIndex()
+        if activeVehicles[entIndex] then
+            activeVehicles[entIndex] = nil -- Remove from our list
+            -- Also clean up other tables to prevent memory leaks
+            vehicleHealths[entIndex] = nil
+            previousVelocities[entIndex] = nil
+            -- ... etc.
+        end
     end
 end)
 
@@ -121,7 +149,7 @@ end)
 hook.Add("Think", "VehicleCollisionDamageThink", function()
     if not GetConVar("vdg_enable_collision_damage"):GetBool() then return end
 
-    for _, ent in ipairs(ents.GetAll()) do
+    for entIndex, ent in pairs(activeVehicles) do
         if not IsValid(ent) then continue end
         if not allowedVehicles[ent:GetClass()] then continue end
 

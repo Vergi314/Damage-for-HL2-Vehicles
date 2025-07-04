@@ -1,26 +1,22 @@
 -- Vehicle Damage and Gibbing System with Options
-local activeVehicles = {} --all valid vehicles
+local vehicles = {} -- This table will hold all data for each vehicle, using the entity index as the key.
 
+-- Initialize existing vehicles on script start
 for _, ent in ipairs(ents.GetAll()) do
     if IsValid(ent) and allowedVehicles[ent:GetClass()] then
-        activeVehicles[ent:EntIndex()] = ent
         local entIndex = ent:EntIndex()
-        vehicleHealths[entIndex] = GetConVar("vdg_global_default_hp"):GetInt()
-        previousPositions[entIndex] = ent:GetPos()
-        previousVelocities[entIndex] = Vector(0, 0, 0)
-        hasExploded[entIndex] = false
-        hasSparked[entIndex] = false
-        lastZapTime[entIndex] = 0
-        activeVehicles[ent:EntIndex()] = ent -- Add to our list
+        vehicles[entIndex] = {
+            entity = ent,
+            health = GetConVar("vdg_global_default_hp"):GetInt(),
+            prev_position = ent:GetPos(),
+            prev_velocity = Vector(0, 0, 0),
+            has_exploded = false,
+            has_sparked = false,
+            last_zap_time = 0,
+            active_fire = false
+        }
     end
 end
-local vehicleHealths = {}
-local previousPositions = {}
-local previousVelocities = {}
-local hasExploded = {}
-local hasSparked = {}
-local lastZapTime = {}
-local activeFires = {}
 
 local allowedVehicles = {
     ["prop_vehicle_jeep"] = true,
@@ -81,91 +77,90 @@ end
 hook.Add("OnEntityCreated", "InitializeVehicleHealth", function(ent)
     if IsValid(ent) and allowedVehicles[ent:GetClass()] then
         local entIndex = ent:EntIndex()
-        vehicleHealths[entIndex] = GetConVar("vdg_global_default_hp"):GetInt()
-        previousPositions[entIndex] = ent:GetPos()
-        previousVelocities[entIndex] = Vector(0, 0, 0)
-        hasExploded[entIndex] = false
-        hasSparked[entIndex] = false
-        lastZapTime[entIndex] = 0
-        activeVehicles[ent:EntIndex()] = ent -- Add to our list
+        vehicles[entIndex] = {
+            entity = ent,
+            health = GetConVar("vdg_global_default_hp"):GetInt(),
+            prev_position = ent:GetPos(),
+            prev_velocity = Vector(0, 0, 0),
+            has_exploded = false,
+            has_sparked = false,
+            last_zap_time = 0,
+            active_fire = false
+        }
     end
 end)
 
-hook.Add("EntityRemoved", "CleanupVehicle", function(ent)
-    if IsValid(ent) and allowedVehicles[ent:GetClass()] then
-        local entIndex = ent:EntIndex()
-        if activeVehicles[entIndex] then
-            activeVehicles[entIndex] = nil -- Remove from our list
-            -- Also clean up other tables to prevent memory leaks
-            vehicleHealths[entIndex] = nil
-            previousVelocities[entIndex] = nil
-            -- ... etc.
-        end
-    end
+hook.Add("EntityRemoved", "VDG_CleanupVehicleData", function(ent)
+    if not IsValid(ent) or not allowedVehicles[ent:GetClass()] then return end
+    local entIndex = ent:EntIndex()
+    vehicles[entIndex] = nil
 end)
+
 
 hook.Add("EntityTakeDamage", "VehicleDamageHandler", function(target, dmginfo)
-    if IsValid(target) and allowedVehicles[target:GetClass()] then
-        local entIndex = target:EntIndex()
-        local damage = dmginfo:GetDamage()
-        local currentHealth = vehicleHealths[entIndex] or GetConVar("vdg_global_default_hp"):GetInt()
-        local newHealth = math.max(currentHealth - damage, 0)
+    if not IsValid(target) or not allowedVehicles[target:GetClass()] then return end
+    
+    local entIndex = target:EntIndex()
+    local vehicleData = vehicles[entIndex]
+    if not vehicleData then return end
 
-        vehicleHealths[entIndex] = newHealth
-        UpdateVehicleAppearance(target, newHealth)
+    local damage = dmginfo:GetDamage()
+    local currentHealth = vehicleData.health or GetConVar("vdg_global_default_hp"):GetInt()
+    local newHealth = math.max(currentHealth - damage, 0)
 
-        if newHealth <= 25 and not target:IsOnFire() then
-            target:Ignite(30, 0)
-        elseif newHealth > 25 and target:IsOnFire() then
-            target:Extinguish()
+    vehicleData.health = newHealth
+    UpdateVehicleAppearance(target, newHealth)
+
+    if newHealth <= 25 and not target:IsOnFire() then
+        target:Ignite(30, 0)
+    elseif newHealth > 25 and target:IsOnFire() then
+        target:Extinguish()
+    end
+
+    if newHealth <= 0 and not vehicleData.has_exploded then
+        vehicleData.has_exploded = true
+        ExplodeVehicle(target)
+    elseif newHealth <= 25 and not vehicleData.has_sparked and GetConVar("vdg_enable_impact_fx"):GetBool() then
+        vehicleData.has_sparked = true
+        local effect = EffectData()
+        effect:SetOrigin(target:GetPos() + Vector(0, 0, 30))
+        util.Effect("cball_explode", effect)
+
+        if CurTime() - vehicleData.last_zap_time >= 0.25 then
+            target:EmitSound("npc/roller/mine/rmine_blades_out1.wav", 75, 100, 0.5)
+            vehicleData.last_zap_time = CurTime()
         end
+    end
 
-        if newHealth <= 0 and not hasExploded[entIndex] then
-            hasExploded[entIndex] = true
-            ExplodeVehicle(target)
-        elseif newHealth <= 25 and not hasSparked[entIndex] and GetConVar("vdg_enable_impact_fx"):GetBool() then
-            hasSparked[entIndex] = true
-            local effect = EffectData()
-            effect:SetOrigin(target:GetPos() + Vector(0, 0, 30))
-            util.Effect("cball_explode", effect)
-
-            if CurTime() - lastZapTime[entIndex] >= 0.25 then
-                target:EmitSound("npc/roller/mine/rmine_blades_out1.wav", 75, 100, 0.5)
-                lastZapTime[entIndex] = CurTime()
-            end
-        end
-
-if newHealth <= 25 and not target:IsOnFire() then
-    target:Ignite(30, 0)
-    local decalPos = target:GetPos() + Vector(0, 0, -32)
-    util.Decal("BeerSplash", decalPos, decalPos + Vector(0, 0, -32), target)
-elseif newHealth > 25 and target:IsOnFire() then
-    target:Extinguish()
-end
-
+    if newHealth <= 25 and not target:IsOnFire() then
+        target:Ignite(30, 0)
+        local decalPos = target:GetPos() + Vector(0, 0, -32)
+        util.Decal("BeerSplash", decalPos, decalPos + Vector(0, 0, -32), target)
+    elseif newHealth > 25 and target:IsOnFire() then
+        target:Extinguish()
     end
 end)
 
 hook.Add("Think", "VehicleCollisionDamageThink", function()
     if not GetConVar("vdg_enable_collision_damage"):GetBool() then return end
 
-    for entIndex, ent in pairs(activeVehicles) do
+    for entIndex, vehicleData in pairs(vehicles) do
+        local ent = vehicleData.entity
         if not IsValid(ent) then continue end
         if not allowedVehicles[ent:GetClass()] then continue end
 
         local phys = ent:GetPhysicsObject()
         if not IsValid(phys) then continue end
 
-        local entIndex = ent:EntIndex()
         local currentVelocity = phys:GetVelocity()
-        local prevVelocity = previousVelocities[entIndex] or currentVelocity
+        local prevVelocity = vehicleData.prev_velocity or currentVelocity
         local deltaV = (currentVelocity - prevVelocity):Length()
-        previousVelocities[entIndex] = currentVelocity
+        vehicleData.prev_velocity = currentVelocity
 
         local sensitivity = GetConVar("vdg_collision_damage_sensitivity"):GetFloat()
         deltaV = deltaV * sensitivity
 
-        local currentHealth = vehicleHealths[entIndex] or GetConVar("vdg_global_default_hp"):GetInt()
+        local currentHealth = vehicleData.health or GetConVar("vdg_global_default_hp"):GetInt()
 
         if deltaV > 100 then
             local damage = 0
@@ -179,7 +174,7 @@ hook.Add("Think", "VehicleCollisionDamageThink", function()
             end
 
             local newHealth = math.max(currentHealth - damage, 0)
-            vehicleHealths[entIndex] = newHealth
+            vehicleData.health = newHealth
             UpdateVehicleAppearance(ent, newHealth)
 
             if deltaV > 200 then
@@ -217,8 +212,8 @@ hook.Add("Think", "VehicleCollisionDamageThink", function()
                 end
             end
 
-            if newHealth <= 0 and not hasExploded[entIndex] then
-                hasExploded[entIndex] = true
+            if newHealth <= 0 and not vehicleData.has_exploded then
+                vehicleData.has_exploded = true
                 ExplodeVehicle(ent)
             end
         end
@@ -241,18 +236,21 @@ hook.Add("PhysicsCollide", "VehiclePropCollisionDamage", function(data, physobj)
     if speed <= 100 then return end
 
     local entIndex = vehicle:EntIndex()
+    local vehicleData = vehicles[entIndex]
+    if not vehicleData then return end
+    
     local defaultHP = GetConVar("vdg_global_default_hp"):GetInt()
     local impactFXEnabled = GetConVar("vdg_enable_impact_fx"):GetBool()
 
     -- Initialize health if needed
-    vehicleHealths[entIndex] = vehicleHealths[entIndex] or defaultHP
-    if vehicleHealths[entIndex] <= 0 then return end
+    vehicleData.health = vehicleData.health or defaultHP
+    if vehicleData.health <= 0 then return end
 
     -- Calculate damage
     local damage = math.Clamp((speed - 100) * 0.01, 0, 10)
-    vehicleHealths[entIndex] = math.max(vehicleHealths[entIndex] - damage, 0)
+    vehicleData.health = math.max(vehicleData.health - damage, 0)
 
-    UpdateVehicleAppearance(vehicle, vehicleHealths[entIndex])
+    UpdateVehicleAppearance(vehicle, vehicleData.health)
 
     -- Impact sound
     vehicle:EmitSound("physics/metal/metal_box_impact_soft" .. math.random(1, 3) .. ".wav", 70)
@@ -266,31 +264,30 @@ hook.Add("PhysicsCollide", "VehiclePropCollisionDamage", function(data, physobj)
     end
 
     -- Trigger explosion
-    if vehicleHealths[entIndex] <= 0 and not hasExploded[entIndex] then
-        hasExploded[entIndex] = true
+    if vehicleData.health <= 0 and not vehicleData.has_exploded then
+        vehicleData.has_exploded = true
         ExplodeVehicle(vehicle)
     end
 end)
 
-
 function UpdateVehicleAppearance(vehicle, health)
     if GetConVar("vdg_disable_darkening"):GetBool() then return end
+    if not IsValid(vehicle) then return end
 
     local maxHealth = GetConVar("vdg_global_default_hp"):GetInt()
     local damageRatio = 1 - math.Clamp(health / maxHealth, 0, 1)
 
+    if not vehicle.VDG_OriginalColor then
+        vehicle.VDG_OriginalColor = vehicle:GetColor()
+    end
+
+    local col = vehicle.VDG_OriginalColor
+    local r = math.max(math.floor(col.r * (1 - damageRatio)), 40)
+    local g = math.max(math.floor(col.g * (1 - damageRatio)), 40)
+    local b = math.max(math.floor(col.b * (1 - damageRatio)), 40)
+
     vehicle:SetRenderMode(RENDERMODE_TRANSALPHA)
-    local originalColor = vehicle.VDG_OriginalColor or vehicle:GetColor()
-    vehicle.VDG_OriginalColor = originalColor
-
-    local newColor = Color(
-        math.max(math.floor(originalColor.r * (1 - damageRatio)), 40),
-        math.max(math.floor(originalColor.g * (1 - damageRatio)), 40),
-        math.max(math.floor(originalColor.b * (1 - damageRatio)), 40),
-        originalColor.a
-    )
-    vehicle:SetColor(newColor)
-
+    vehicle:SetColor(Color(r, g, b, col.a))
 end
 
 

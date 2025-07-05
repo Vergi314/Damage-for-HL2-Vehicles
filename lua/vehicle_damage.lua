@@ -75,9 +75,17 @@ end
 
 
 local function VehicleCollisionDamageThink()
+    local thinkDelay = GetConVar("vdg_collision_think_delay"):GetFloat()
+    local curTime = CurTime()
+
     if not GetConVar("vdg_enable_collision_damage"):GetBool() then return end
 
     for entIndex, vehicleData in pairs(vehicles) do
+        if vehicleData.last_think and (curTime - vehicleData.last_think < thinkDelay) then
+            continue
+        end
+        vehicleData.last_think = curTime
+
         local ent = vehicleData.entity
         if not IsValid(ent) then continue end
         if not allowedVehicles[ent:GetClass()] then continue end
@@ -225,96 +233,6 @@ hook.Add("EntityTakeDamage", "VehicleDamageHandler", function(target, dmginfo)
         target:Extinguish()
     end
 end)
-
-local function VehicleCollisionDamageThink()
-    if not GetConVar("vdg_enable_collision_damage"):GetBool() then return end
-
-    for entIndex, vehicleData in pairs(vehicles) do
-        local ent = vehicleData.entity
-        if not IsValid(ent) then continue end
-        if not allowedVehicles[ent:GetClass()] then continue end
-
-        local phys = ent:GetPhysicsObject()
-        if not IsValid(phys) then continue end
-
-        local currentVelocity = phys:GetVelocity()
-        local prevVelocity = vehicleData.prev_velocity or currentVelocity
-        local deltaV = (currentVelocity - prevVelocity):Length()
-        vehicleData.prev_velocity = currentVelocity
-
-        local sensitivity = GetConVar("vdg_collision_damage_sensitivity"):GetFloat()
-        deltaV = deltaV * sensitivity
-
-        local currentHealth = vehicleData.health or GetConVar("vdg_global_default_hp"):GetInt()
-
-        if deltaV > 100 then
-            local damage = 0
-
-            if deltaV > 200 then
-                -- Heavy hit
-                damage = math.Clamp((deltaV - 200) * 0.4, 5, 50) 
-            else
-                -- Light hit
-                damage = math.Clamp((deltaV - 100) * 0.1, 1, 5)
-            end
-
-            local newHealth = math.max(currentHealth - damage, 0)
-            vehicleData.health = newHealth
-            UpdateVehicleAppearance(ent, newHealth)
-
-            if deltaV > 200 then
-                local heavySounds = {
-                    "physics/metal/metal_barrel_impact_hard3.wav",
-                    "physics/metal/metal_box_break1.wav",
-                    "physics/metal/metal_box_break2.wav"
-                }
-                ent:EmitSound(table.Random(heavySounds), 75, math.random(95, 105), math.Clamp(damage / 50, 0.5, 1))
-            else
-                local lightSounds = {
-                    "physics/metal/metal_barrel_impact_hard1.wav",
-                    "physics/metal/metal_canister_impact_soft1.wav"
-                }
-                ent:EmitSound(table.Random(lightSounds), 60, math.random(95, 105), 0.4)
-            end
-
-            if GetConVar("vdg_enable_impact_fx"):GetBool() and deltaV > 150 then
-                local edata = EffectData()
-                edata:SetOrigin(ent:GetPos() + Vector(0, 0, 30))
-                util.Effect("ManhackSparks", edata)
-            end
-
-            for _, ply in ipairs(player.GetAll()) do
-                if ply:GetPos():Distance(ent:GetPos()) < 500 then
-                    util.ScreenShake(ent:GetPos(), 5, 100, 0.5, 250)
-                end
-            end
-
-            local fireThreshold = GetConVar("vdg_fire_threshold_percent"):GetFloat() or 25
-            if newHealth <= (GetConVar("vdg_global_default_hp"):GetInt() * (fireThreshold / 100)) then
-                if not ent.VDG_IsOnFire then
-                    ent:Ignite(15)
-                    ent.VDG_IsOnFire = true
-                end
-            end
-
-            if newHealth <= 0 and not vehicleData.has_exploded then
-                vehicleData.has_exploded = true
-                ExplodeVehicle(ent)
-            end
-        end
-    end
-end
-
-function addHookVehicleCollision()
-    hook.Add("Think", "VehicleCollisionDamageThink", VehicleCollisionDamageThink)
-end
-
-function removeHookVehicleCollision()
-    hook.Remove("Think", "VehicleCollisionDamageThink")
-end
-
-addHookVehicleCollision()
-
 
 hook.Add("PhysicsCollide", "VehiclePropCollisionDamage", function(data, physobj)
     if not GetConVar("vdg_enable_collision_damage"):GetBool() then return end
@@ -651,4 +569,53 @@ if SERVER then
     CreateConVar("vdgs_fx_smoketime", "20", {FCVAR_ARCHIVE, FCVAR_REPLICATED}, "Duration of smoke effect in seconds")
     CreateConVar("vdg_enable_collision_damage", "1", {FCVAR_ARCHIVE, FCVAR_REPLICATED}, "Enable or disable crash and prop collision damage")
     CreateConVar("vdg_collision_damage_sensitivity", "1", {FCVAR_ARCHIVE, FCVAR_REPLICATED}, "Controls how sensitive vehicle collisions are to damage")
+    CreateConVar("vdg_collision_think_delay", "0.1", {FCVAR_ARCHIVE, FCVAR_REPLICATED}, "Delay between vehicle collision checks for performance. Lower is more frequent.")
 end
+
+-- Console commands for admins
+concommand.Add("vdg_add_collision_hook", function(ply)
+    if not ply:IsAdmin() then return end
+    addHookVehicleCollision()
+    ply:ChatPrint("Vehicle collision hook added.")
+end)
+
+concommand.Add("vdg_remove_collision_hook", function(ply)
+    if not ply:IsAdmin() then return end
+    removeHookVehicleCollision()
+    ply:ChatPrint("Vehicle collision hook removed.")
+end)
+
+concommand.Add("vdg_set_health", function(ply, cmd, args)
+    if not ply:IsAdmin() then return end
+    local ent = ply:GetEyeTrace().Entity
+    if not IsValid(ent) or not allowedVehicles[ent:GetClass()] then
+        ply:ChatPrint("You are not looking at a valid vehicle.")
+        return
+    end
+    local health = tonumber(args[1])
+    if not health then
+        ply:ChatPrint("Invalid health value.")
+        return
+    end
+    local entIndex = ent:EntIndex()
+    if vehicles[entIndex] then
+        vehicles[entIndex].health = health
+        ply:ChatPrint("Vehicle health set to " .. health)
+    else
+        ply:ChatPrint("Vehicle not found in the damage system.")
+    end
+end)
+
+concommand.Add("vdg_get_health", function(ply)
+    local ent = ply:GetEyeTrace().Entity
+    if not IsValid(ent) or not allowedVehicles[ent:GetClass()] then
+        ply:ChatPrint("You are not looking at a valid vehicle.")
+        return
+    end
+    local entIndex = ent:EntIndex()
+    if vehicles[entIndex] and vehicles[entIndex].health then
+        ply:ChatPrint("Vehicle health: " .. vehicles[entIndex].health)
+    else
+        ply:ChatPrint("Vehicle not found in the damage system or has no health data.")
+    end
+end)

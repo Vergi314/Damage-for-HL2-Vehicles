@@ -1,5 +1,71 @@
+if SERVER then
+    CreateConVar("vdg_client_default_hp", "100", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Default vehicle HP")
+    CreateConVar("vdg_global_default_hp", "100", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Default vehicle HP")
+    CreateConVar("vdg_enable_impact_fx", "1", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Enable vehicle impact effects")
+    CreateConVar("vdg_enable_vehicle_fire", "1", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Enable vehicle fire after explosion")
+    CreateConVar("vdg_disable_darkening", "0", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Disable vehicle color darkening on damage")
+    CreateConVar("vdg_disable_skeleton_gibs", "0", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Disable the skeleton gibs from showing")
+    CreateConVar("vdg_gib_lifetime", "20", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Lifetime in seconds for vehicle gibs")
+    CreateConVar("vdg_enable_blood_trail", "1", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Enable blood trails on gibs")
+    CreateConVar("vdg_loot_chance", "0.25", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Chance to spawn loot on explosion")
+    CreateConVar("vdg_force_shared_gibs_for_unknown_models", "1", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Force shared gibs for unknown vehicle models")
+    CreateConVar("vdg_fire_threshold_percent", "25", FCVAR_ARCHIVE, "Vehicle fire starts at this percent of health remaining.")
+    CreateConVar("vdg_enable_physics_degradation", "1", { FCVAR_ARCHIVE, FCVAR_REPLICATED }, "Enable vehicle physics degradation based on health.")
+    CreateConVar("vdgs_fx_smoke", "1", {FCVAR_ARCHIVE, FCVAR_REPLICATED}, "Enable smoke effects on damaged vehicles")
+    CreateConVar("vdgs_fx_smoketime", "20", {FCVAR_ARCHIVE, FCVAR_REPLICATED}, "Duration of smoke effect in seconds")
+    CreateConVar("vdg_enable_collision_damage", "1", {FCVAR_ARCHIVE, FCVAR_REPLICATED}, "Enable or disable crash and prop collision damage")
+    CreateConVar("vdg_collision_damage_sensitivity", "1", {FCVAR_ARCHIVE, FCVAR_REPLICATED}, "Controls how sensitive vehicle collisions are to damage")
+    CreateConVar("vdg_collision_think_delay", "0.1", {FCVAR_ARCHIVE, FCVAR_REPLICATED}, "Delay between vehicle collision checks for performance. Lower is more frequent.")
+end
+
 -- Vehicle Damage and Gibbing System with Options
-local vehicles = {} -- This table will hold all data for each vehicle, using the entity index as the key.
+local vehicles = {} -- This table will hold all data for each vehicle, using the entity index as thekey.
+local Cfg = {}
+
+if SERVER then
+    -- Caching for ConVars for performance
+    local function UpdateConVarCache()
+        Cfg.EnableCollisionDamage = GetConVar("vdg_enable_collision_damage"):GetBool()
+        Cfg.CollisionDamageSensitivity = GetConVar("vdg_collision_damage_sensitivity"):GetFloat()
+        Cfg.CollisionThinkDelay = GetConVar("vdg_collision_think_delay"):GetFloat()
+        Cfg.EnableImpactFX = GetConVar("vdg_enable_impact_fx"):GetBool()
+        Cfg.GlobalDefaultHP = GetConVar("vdg_global_default_hp"):GetInt()
+        Cfg.FireThresholdPercent = GetConVar("vdg_fire_threshold_percent"):GetFloat()
+        Cfg.DisableDarkening = GetConVar("vdg_disable_darkening"):GetBool()
+        Cfg.ForceSharedGibs = GetConVar("vdg_force_shared_gibs_for_unknown_models"):GetBool()
+        Cfg.EnableBloodTrail = GetConVar("vdg_enable_blood_trail"):GetBool()
+        Cfg.GibLifetime = GetConVar("vdg_gib_lifetime"):GetFloat()
+        Cfg.LootChance = GetConVar("vdg_loot_chance"):GetFloat()
+        Cfg.EnableSmoke = GetConVar("vdgs_fx_smoke"):GetBool()
+        Cfg.SmokeTime = GetConVar("vdgs_fx_smoketime"):GetFloat()
+        Cfg.EnableVehicleFire = GetConVar("vdg_enable_vehicle_fire"):GetBool()
+        Cfg.DisableSkeletonGibs = GetConVar("vdg_disable_skeleton_gibs"):GetBool()
+        Cfg.EnablePhysicsDegradation = GetConVar("vdg_enable_physics_degradation"):GetBool()
+    end
+
+    -- Initial population of the cache
+    timer.Simple(0, UpdateConVarCache)
+
+    -- Update cache when a ConVar changes
+    cvars.AddChangeCallback("vdg_enable_collision_damage", UpdateConVarCache)
+    cvars.AddChangeCallback("vdg_collision_damage_sensitivity", UpdateConVarCache)
+    cvars.AddChangeCallback("vdg_collision_think_delay", UpdateConVarCache)
+    cvars.AddChangeCallback("vdg_enable_impact_fx", UpdateConVarCache)
+    cvars.AddChangeCallback("vdg_global_default_hp", UpdateConVarCache)
+    cvars.AddChangeCallback("vdg_fire_threshold_percent", UpdateConVarCache)
+    cvars.AddChangeCallback("vdg_disable_darkening", UpdateConVarCache)
+    cvars.AddChangeCallback("vdg_force_shared_gibs_for_unknown_models", UpdateConVarCache)
+    cvars.AddChangeCallback("vdg_enable_blood_trail", UpdateConVarCache)
+    cvars.AddChangeCallback("vdg_gib_lifetime", UpdateConVarCache)
+    cvars.AddChangeCallback("vdg_loot_chance", UpdateConVarCache)
+    cvars.AddChangeCallback("vdgs_fx_smoke", UpdateConVarCache)
+    cvars.AddChangeCallback("vdgs_fx_smoketime", UpdateConVarCache)
+    cvars.AddChangeCallback("vdg_enable_vehicle_fire", UpdateConVarCache)
+    cvars.AddChangeCallback("vdg_disable_skeleton_gibs", UpdateConVarCache)
+    cvars.AddChangeCallback("vdg_enable_physics_degradation", UpdateConVarCache)
+end
+
+
 
 -- Initialize existing vehicles on script start
 for _, ent in ipairs(ents.GetAll()) do
@@ -47,7 +113,7 @@ CreateConVar("vdgs_fx_smokethreshold", "30", {FCVAR_ARCHIVE, FCVAR_REPLICATED}, 
 
 local function ApplyHandlingDegradation(vehicle, health)
     if not IsValid(vehicle) or not allowedVehicles[vehicle:GetClass()] then return end
-    if not GetConVar("vdg_enable_physics_degradation"):GetBool() then return end
+    if not Cfg.EnablePhysicsDegradation then return end
 
     local phys = vehicle:GetPhysicsObject()
     if not IsValid(phys) then return end
@@ -75,13 +141,12 @@ end
 
 
 local function VehicleCollisionDamageThink()
-    local thinkDelay = GetConVar("vdg_collision_think_delay"):GetFloat()
+    if not Cfg.EnableCollisionDamage then return end
+
     local curTime = CurTime()
 
-    if not GetConVar("vdg_enable_collision_damage"):GetBool() then return end
-
     for entIndex, vehicleData in pairs(vehicles) do
-        if vehicleData.last_think and (curTime - vehicleData.last_think < thinkDelay) then
+        if vehicleData.last_think and (curTime - vehicleData.last_think < Cfg.CollisionThinkDelay) then
             continue
         end
         vehicleData.last_think = curTime
@@ -98,10 +163,10 @@ local function VehicleCollisionDamageThink()
         local deltaV = (currentVelocity - prevVelocity):Length()
         vehicleData.prev_velocity = currentVelocity
 
-        local sensitivity = GetConVar("vdg_collision_damage_sensitivity"):GetFloat()
+        local sensitivity = Cfg.CollisionDamageSensitivity
         deltaV = deltaV * sensitivity
 
-        local currentHealth = vehicleData.health or GetConVar("vdg_global_default_hp"):GetInt()
+        local currentHealth = vehicleData.health or Cfg.GlobalDefaultHP
 
         if deltaV > 100 then
             local damage = 0
@@ -133,7 +198,7 @@ local function VehicleCollisionDamageThink()
                 ent:EmitSound(table.Random(lightSounds), 60, math.random(95, 105), 0.4)
             end
 
-            if GetConVar("vdg_enable_impact_fx"):GetBool() and deltaV > 150 then
+            if Cfg.EnableImpactFX and deltaV > 150 then
                 local edata = EffectData()
                 edata:SetOrigin(ent:GetPos() + Vector(0, 0, 30))
                 util.Effect("ManhackSparks", edata)
@@ -145,8 +210,8 @@ local function VehicleCollisionDamageThink()
                 end
             end
 
-            local fireThreshold = GetConVar("vdg_fire_threshold_percent"):GetFloat() or 25
-            if newHealth <= (GetConVar("vdg_global_default_hp"):GetInt() * (fireThreshold / 100)) then
+            local fireThreshold = Cfg.GlobalDefaultHP * (Cfg.FireThresholdPercent / 100)
+            if newHealth <= fireThreshold then
                 if not ent.VDG_IsOnFire then
                     ent:Ignite(15)
                     ent.VDG_IsOnFire = true
@@ -235,7 +300,7 @@ hook.Add("EntityTakeDamage", "VehicleDamageHandler", function(target, dmginfo)
 end)
 
 hook.Add("PhysicsCollide", "VehiclePropCollisionDamage", function(data, physobj)
-    if not GetConVar("vdg_enable_collision_damage"):GetBool() then return end
+    if not Cfg.EnableCollisionDamage then return end
 
     local vehicle = data.HitEntity
     local prop = physobj:GetEntity()
@@ -244,7 +309,7 @@ hook.Add("PhysicsCollide", "VehiclePropCollisionDamage", function(data, physobj)
     if vehicle == prop or not allowedVehicles[vehicle:GetClass()] then return end
 
     local speed = data.OurOldVelocity:Length()
-    local sensitivity = GetConVar("vdg_collision_damage_sensitivity"):GetFloat()
+    local sensitivity = Cfg.CollisionDamageSensitivity
     speed = speed * sensitivity
     if speed <= 100 then return end
 
@@ -252,8 +317,8 @@ hook.Add("PhysicsCollide", "VehiclePropCollisionDamage", function(data, physobj)
     local vehicleData = vehicles[entIndex]
     if not vehicleData then return end
     
-    local defaultHP = GetConVar("vdg_global_default_hp"):GetInt()
-    local impactFXEnabled = GetConVar("vdg_enable_impact_fx"):GetBool()
+    local defaultHP = Cfg.GlobalDefaultHP
+    local impactFXEnabled = Cfg.EnableImpactFX
 
     -- Initialize health if needed
     vehicleData.health = vehicleData.health or defaultHP
@@ -284,10 +349,10 @@ hook.Add("PhysicsCollide", "VehiclePropCollisionDamage", function(data, physobj)
 end)
 
 function UpdateVehicleAppearance(vehicle, health)
-    if GetConVar("vdg_disable_darkening"):GetBool() then return end
+    if Cfg.DisableDarkening then return end
     if not IsValid(vehicle) then return end
 
-    local maxHealth = GetConVar("vdg_global_default_hp"):GetInt()
+    local maxHealth = Cfg.GlobalDefaultHP
     local damageRatio = 1 - math.Clamp(health / maxHealth, 0, 1)
 
     if not vehicle.VDG_OriginalColor then
@@ -354,12 +419,12 @@ function GetGibModels(vehicle)
         if IsJalopy(vehicle) then
             return models["prop_vehicle_jalopy"]
         elseif not IsBuggy(vehicle) then
-            if GetConVar("vdg_force_shared_gibs_for_unknown_models"):GetBool() then
+            if Cfg.ForceSharedGibs then
                 return genericGibs
             end
         end
     elseif vehicle:GetClass() == "prop_vehicle_airboat" and vehicle:GetModel() ~= "models/airboat.mdl" then
-        if GetConVar("vdg_force_shared_gibs_for_unknown_models"):GetBool() then
+        if Cfg.ForceSharedGibs then
             return genericGibs
         end
     end
@@ -376,14 +441,14 @@ local function ApplyForceAndAutoRemove(ent)
         phys:ApplyForceCenter(forceDir * mass * 600)
     end
 
-    if GetConVar("vdg_enable_blood_trail"):GetBool() and ent:IsValid() then
+    if Cfg.EnableBloodTrail and ent:IsValid() then
         local trail = util.SpriteTrail(ent, 0, Color(200, 0, 0, 200), false, 8, 50, 1, 1 / (8 + 50) * 0.5, "trails/blood.vmt")
         ent.BloodTrail = trail
     end
 
     ent:EmitSound("physics/flesh/flesh_impact_bullet3.wav")
 
-    timer.Simple(GetConVar("vdg_gib_lifetime"):GetFloat(), function()
+    timer.Simple(Cfg.GibLifetime, function()
         if IsValid(ent) then
             if ent.BloodTrail then ent.BloodTrail:Remove() end
             ent:Remove()
@@ -440,8 +505,7 @@ function ExplodeVehicle(vehicle)
     end
 
     -- Spawn loot
-    local lootChance = GetConVar("vdg_loot_chance"):GetFloat()
-    if math.random() < lootChance then
+    if math.random() < Cfg.LootChance then
         local lootTable = {
             "item_battery",
             "item_ammo_smg1",
@@ -472,7 +536,7 @@ function ExplodeVehicle(vehicle)
     end
 
     -- Smoke effect always spawns first
-    if GetConVar("vdgs_fx_smoke"):GetBool() then
+    if Cfg.EnableSmoke then
         local smoke = ents.Create("env_smokestack")
         if IsValid(smoke) then
             smoke:SetPos(pos)
@@ -496,14 +560,14 @@ function ExplodeVehicle(vehicle)
             smoke:Activate()
             smoke:Fire("TurnOn", "", 0)
 
-            timer.Simple(GetConVar("vdgs_fx_smoketime"):GetFloat(), function()
+            timer.Simple(Cfg.SmokeTime, function()
                 if IsValid(smoke) then smoke:Remove() end
             end)
         end
     end
 
     -- Fire effect, extinguish after 10 seconds
-    if GetConVar("vdg_enable_vehicle_fire"):GetBool() then
+    if Cfg.EnableVehicleFire then
         local fire = ents.Create("env_fire")
         if IsValid(fire) then
             fire:SetPos(pos)
@@ -529,7 +593,7 @@ function ExplodeVehicle(vehicle)
     local driver = vehicle:GetDriver()
     if IsValid(driver) and driver:IsPlayer() then
         driver:Kill()
-        if not GetConVar("vdg_disable_skeleton_gibs"):GetBool() then
+        if not Cfg.DisableSkeletonGibs then
             SpawnSkeletalRemains(driver:GetPos())
             local decalPos = pos + Vector(0, 0, 5)
             util.Decal("Blood", decalPos, decalPos - Vector(0, 0, 64), vehicle)
@@ -551,26 +615,6 @@ function ExplodeVehicle(vehicle)
     end)
 end
 
-
-if SERVER then
-    CreateConVar("vdg_client_default_hp", "100", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Default vehicle HP")
-    CreateConVar("vdg_global_default_hp", "100", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Default vehicle HP")
-    CreateConVar("vdg_enable_impact_fx", "1", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Enable vehicle impact effects")
-    CreateConVar("vdg_enable_vehicle_fire", "1", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Enable vehicle fire after explosion")
-    CreateConVar("vdg_disable_darkening", "0", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Disable vehicle color darkening on damage")
-    CreateConVar("vdg_disable_skeleton_gibs", "0", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Disable the skeleton gibs from showing")
-    CreateConVar("vdg_gib_lifetime", "20", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Lifetime in seconds for vehicle gibs")
-    CreateConVar("vdg_enable_blood_trail", "1", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Enable blood trails on gibs")
-    CreateConVar("vdg_loot_chance", "0.25", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Chance to spawn loot on explosion")
-    CreateConVar("vdg_force_shared_gibs_for_unknown_models", "1", FCVAR_REPLICATED + FCVAR_ARCHIVE, "Force shared gibs for unknown vehicle models")
-    CreateConVar("vdg_fire_threshold_percent", "25", FCVAR_ARCHIVE, "Vehicle fire starts at this percent of health remaining.")
-    CreateConVar("vdg_enable_physics_degradation", "1", { FCVAR_ARCHIVE, FCVAR_REPLICATED }, "Enable vehicle physics degradation based on health.")
-    CreateConVar("vdgs_fx_smoke", "1", {FCVAR_ARCHIVE, FCVAR_REPLICATED}, "Enable smoke effects on damaged vehicles")
-    CreateConVar("vdgs_fx_smoketime", "20", {FCVAR_ARCHIVE, FCVAR_REPLICATED}, "Duration of smoke effect in seconds")
-    CreateConVar("vdg_enable_collision_damage", "1", {FCVAR_ARCHIVE, FCVAR_REPLICATED}, "Enable or disable crash and prop collision damage")
-    CreateConVar("vdg_collision_damage_sensitivity", "1", {FCVAR_ARCHIVE, FCVAR_REPLICATED}, "Controls how sensitive vehicle collisions are to damage")
-    CreateConVar("vdg_collision_think_delay", "0.1", {FCVAR_ARCHIVE, FCVAR_REPLICATED}, "Delay between vehicle collision checks for performance. Lower is more frequent.")
-end
 
 -- Console commands for admins
 concommand.Add("vdg_add_collision_hook", function(ply)

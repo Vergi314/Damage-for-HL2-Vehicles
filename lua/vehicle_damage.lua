@@ -74,8 +74,90 @@ local function ApplyHandlingDegradation(vehicle, health)
 end
 
 
+local function VehicleCollisionDamageThink()
+    if not GetConVar("vdg_enable_collision_damage"):GetBool() then return end
+
+    for entIndex, vehicleData in pairs(vehicles) do
+        local ent = vehicleData.entity
+        if not IsValid(ent) then continue end
+        if not allowedVehicles[ent:GetClass()] then continue end
+
+        local phys = ent:GetPhysicsObject()
+        if not IsValid(phys) then continue end
+
+        local currentVelocity = phys:GetVelocity()
+        local prevVelocity = vehicleData.prev_velocity or currentVelocity
+        local deltaV = (currentVelocity - prevVelocity):Length()
+        vehicleData.prev_velocity = currentVelocity
+
+        local sensitivity = GetConVar("vdg_collision_damage_sensitivity"):GetFloat()
+        deltaV = deltaV * sensitivity
+
+        local currentHealth = vehicleData.health or GetConVar("vdg_global_default_hp"):GetInt()
+
+        if deltaV > 100 then
+            local damage = 0
+
+            if deltaV > 200 then
+                -- Heavy hit
+                damage = math.Clamp((deltaV - 200) * 0.4, 5, 50) 
+            else
+                -- Light hit
+                damage = math.Clamp((deltaV - 100) * 0.1, 1, 5)
+            end
+
+            local newHealth = math.max(currentHealth - damage, 0)
+            vehicleData.health = newHealth
+            UpdateVehicleAppearance(ent, newHealth)
+
+            if deltaV > 200 then
+                local heavySounds = {
+                    "physics/metal/metal_barrel_impact_hard3.wav",
+                    "physics/metal/metal_box_break1.wav",
+                    "physics/metal/metal_box_break2.wav"
+                }
+                ent:EmitSound(table.Random(heavySounds), 75, math.random(95, 105), math.Clamp(damage / 50, 0.5, 1))
+            else
+                local lightSounds = {
+                    "physics/metal/metal_barrel_impact_hard1.wav",
+                    "physics/metal/metal_canister_impact_soft1.wav"
+                }
+                ent:EmitSound(table.Random(lightSounds), 60, math.random(95, 105), 0.4)
+            end
+
+            if GetConVar("vdg_enable_impact_fx"):GetBool() and deltaV > 150 then
+                local edata = EffectData()
+                edata:SetOrigin(ent:GetPos() + Vector(0, 0, 30))
+                util.Effect("ManhackSparks", edata)
+            end
+
+            for _, ply in ipairs(player.GetAll()) do
+                if ply:GetPos():Distance(ent:GetPos()) < 500 then
+                    util.ScreenShake(ent:GetPos(), 5, 100, 0.5, 250)
+                end
+            end
+
+            local fireThreshold = GetConVar("vdg_fire_threshold_percent"):GetFloat() or 25
+            if newHealth <= (GetConVar("vdg_global_default_hp"):GetInt() * (fireThreshold / 100)) then
+                if not ent.VDG_IsOnFire then
+                    ent:Ignite(15)
+                    ent.VDG_IsOnFire = true
+                end
+            end
+
+            if newHealth <= 0 and not vehicleData.has_exploded then
+                vehicleData.has_exploded = true
+                ExplodeVehicle(ent)
+            end
+        end
+    end
+end
+
 hook.Add("OnEntityCreated", "InitializeVehicleHealth", function(ent)
     if IsValid(ent) and allowedVehicles[ent:GetClass()] then
+        if table.IsEmpty(vehicles) then
+            hook.Add("Think", "VehicleCollisionDamageThink", VehicleCollisionDamageThink)
+        end
         local entIndex = ent:EntIndex()
         vehicles[entIndex] = {
             entity = ent,
@@ -94,6 +176,9 @@ hook.Add("EntityRemoved", "VDG_CleanupVehicleData", function(ent)
     if not IsValid(ent) or not allowedVehicles[ent:GetClass()] then return end
     local entIndex = ent:EntIndex()
     vehicles[entIndex] = nil
+    if table.IsEmpty(vehicles) then
+        hook.Remove("Think", "VehicleCollisionDamageThink")
+    end
 end)
 
 

@@ -146,7 +146,7 @@ end
     end
 end)
 
-hook.Add("Think", "VehicleCollisionDamageThink", function()
+local function VehicleCollisionDamageThink()
     if not GetConVar("vdg_enable_collision_damage"):GetBool() then return end
 
     for entIndex, ent in pairs(activeVehicles) do
@@ -223,7 +223,17 @@ hook.Add("Think", "VehicleCollisionDamageThink", function()
             end
         end
     end
-end)
+end
+
+function addHookVehicleCollision()
+    hook.Add("Think", "VehicleCollisionDamageThink", VehicleCollisionDamageThink)
+end
+
+function removeHookVehicleCollision()
+    hook.Remove("Think", "VehicleCollisionDamageThink")
+end
+
+addHookVehicleCollision()
 
 
 hook.Add("PhysicsCollide", "VehiclePropCollisionDamage", function(data, physobj)

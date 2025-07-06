@@ -204,11 +204,7 @@ local function VehicleCollisionDamageThink()
                 util.Effect("ManhackSparks", edata)
             end
 
-            for _, ply in ipairs(player.GetAll()) do
-                if ply:GetPos():Distance(ent:GetPos()) < 500 then
-                    util.ScreenShake(ent:GetPos(), 5, 100, 0.5, 250)
-                end
-            end
+            util.ScreenShake(ent:GetPos(), 5, 100, 0.5, 500)
 
             local fireThreshold = Cfg.GlobalDefaultHP * (Cfg.FireThresholdPercent / 100)
             if newHealth <= fireThreshold then

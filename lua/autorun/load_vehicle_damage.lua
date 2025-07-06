@@ -36,6 +36,7 @@ if CLIENT then
         AddSlider("Smoke Duration (seconds)", "vdgs_fx_smoketime", 1, 120, 0)
         AddSlider("Vehicle Health Threshold for Smoke", "vdgs_fx_smokethreshold", 0, 100, 0)
         AddSlider("Collision Damage Sensitivity", "vdg_collision_damage_sensitivity", 0.1, 5.0, 1)
+        AddSlider("Collision Check Delay", "vdg_collision_think_delay", 0.05, 1.0, 2)
 
         -- Add checkboxes
         AddCheckbox("Enable Fire After Explosion", "vdg_enable_fire_after_explosion")
@@ -83,7 +84,8 @@ if CLIENT then
                     vdgs_fx_smoketime = "20",
                     vdgs_fx_smokethreshold = "30",
                     vdg_enable_collision_damage = "1",
-                    vdg_collision_damage_sensitivity = "0.30"
+                    vdg_collision_damage_sensitivity = "0.30",
+                    vdg_collision_think_delay = "0.1"
                 }
 
                 for cvar, val in pairs(defaults) do

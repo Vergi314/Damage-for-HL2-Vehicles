@@ -3,7 +3,7 @@ This adds combat damage (bullets/hits) as well as physical collision damage (e.g
 
 ![hippo](https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExOTZ6c2FkbzUxZjQ3bXJvZm93enBseWwxNHkyY24wZHh3ZDd4ODNlMSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/8y2NDGuOfcRs7qm02t/giphy.gif)
 
-#FEATURES:#
+# FEATURES:
 
 - Adjustable health / damage system for the jeep, airboat and even the jalopy from Half-Life 2: Episode 2! (As well as vehicles that use jeep base and airboat base)
 - Many convars for all possible parameters, as well as an options menu, find it in "Utilities" tab, under "Vergi's Addons" section.
@@ -16,6 +16,6 @@ This adds combat damage (bullets/hits) as well as physical collision damage (e.g
 - Physical collision system has finally been added to this version of the mod, allowing you to crash and bump your car and actually damage it in the process! There are convars/options for adjusting the collision system's sensitivity (0.3 by default, as that is the sweetspot) or even disabling it completely.
 - Vehicle handling is now slightly worsened gradually as vehicle health gets lowered.
 
-#STEAM WORKSHOP PAGE:#
+# STEAM WORKSHOP PAGE:
 
 https://steamcommunity.com/sharedfiles/filedetails/?id=3282631707&searchtext=HL2+vehicles

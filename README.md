@@ -1,6 +1,8 @@
 A simple script that adds health to vehicles and the ability to damage them, i am surprised how no one has ever made this before.
 This adds combat damage (bullets/hits) as well as physical collision damage (e.g crashing your car, hitting it, falling with it) to vehicles as well as detailed gibbing and explosion effects, while staying faithful to the vanilla style AND looking cool!
 
+![hippo](https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExOTZ6c2FkbzUxZjQ3bXJvZm93enBseWwxNHkyY24wZHh3ZDd4ODNlMSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/8y2NDGuOfcRs7qm02t/giphy.gif)
+
 **FEATURES:**
 
 - Adjustable health / damage system for the jeep, airboat and even the jalopy from Half-Life 2: Episode 2! (As well as vehicles that use jeep base and airboat base)
